@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, SafeAreaView, Image } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, SafeAreaView, Image,ScrollView } from 'react-native';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot } from 'firebase/firestore';
 import { TabView, SceneMap, TabBar } from 'react-native-tab-view';
@@ -20,13 +20,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
-const gateName = 'sal1';
+const gateName = 'sal2';
 
 export default function App() {
   const [index, setIndex] = useState(0);
   const [routes, setRoutes] = useState([]);
   const [userData, setUserData] = useState({}); // New state to store user data
   const [imageUrls, setImageUrls] = useState({});
+  const [currentimageUrls, setCurrentImageUrls] = useState({});
+  const [fetchLeftIrisImageUrls, setLeftIrisImageUrls] = useState({});
+  const [fetchRightIrisImageUrls, setRightIrisImageUrls] = useState({});
 
   useEffect(() => {
     if (!gateName) return;
@@ -47,7 +50,20 @@ export default function App() {
         // If document has an image path, fetch the URL
         console.log('Passport image path:', docData.passport_image);
         if (docData.passport_image) {
-          fetchImageUrl(doc.id, docData.passport_image);
+          console.log('passport_image: ',docData.passport_image)
+          fetchPassportImageUrl(doc.id, docData.passport_image);
+        }
+        if (docData.current_image) {
+          console.log('passport_image: ',docData.current_image)
+          fetchCurrentImageUrl(doc.id, docData.current_image);
+        }
+        if (docData.left_iris) {
+          console.log('passport_image: ',docData.left_iris)
+          fetchLeftIrisImageUrl(doc.id, docData.left_iris);
+        }
+        if (docData.right_iris) {
+          console.log('passport_image: ',docData.right_iris)
+          fetchRightIrisImageUrl(doc.id, docData.right_iris);
         }
         return {
           key: doc.id,
@@ -62,7 +78,7 @@ export default function App() {
     return () => unsubscribe();
   }, [gateName]);
 
-  const fetchImageUrl = async (userId, imagePath) => {
+  const fetchPassportImageUrl = async (userId, imagePath) => {
     try {
         console.log('Starting to fetch image for user:', userId);
         console.log('Image path:', imagePath);
@@ -70,7 +86,7 @@ export default function App() {
         const imageRef = ref(storage, imagePath);
         const url = await getDownloadURL(imageRef);
         
-        console.log('Successfully got URL:', url);
+        console.log('Successfully got passport URL:', url);
         
         setImageUrls(prev => ({
             ...prev,
@@ -83,6 +99,68 @@ export default function App() {
     }
 };
 
+const fetchCurrentImageUrl = async (userId, imagePath) => {
+  try {
+      console.log('Starting to fetch image for user:', userId);
+      console.log('Image path:', imagePath);
+      
+      const imageRef = ref(storage, imagePath);
+      const url = await getDownloadURL(imageRef);
+      
+      console.log('Successfully got passport URL:', url);
+      
+      setCurrentImageUrls(prev => ({
+          ...prev,
+          [userId]: url
+      }));
+  } catch (error) {
+      console.error("Error fetching image URL:", error);
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
+  }
+};
+
+const fetchLeftIrisImageUrl = async (userId, imagePath) => {
+  try {
+      console.log('Starting to fetch image for user:', userId);
+      console.log('Image path:', imagePath);
+      
+      const imageRef = ref(storage, imagePath);
+      const url = await getDownloadURL(imageRef);
+      
+      console.log('Successfully got left iris URL:', url);
+      
+      setLeftIrisImageUrls(prev => ({
+          ...prev,
+          [userId]: url
+      }));
+  } catch (error) {
+      console.error("Error fetching image URL:", error);
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
+  }
+};
+const fetchRightIrisImageUrl = async (userId, imagePath) => {
+  try {
+      console.log('Starting to fetch image for user:', userId);
+      console.log('Image path:', imagePath);
+      
+      const imageRef = ref(storage, imagePath);
+      const url = await getDownloadURL(imageRef);
+      
+      console.log('Successfully got right iris URL:', url);
+      
+      setRightIrisImageUrls(prev => ({
+          ...prev,
+          [userId]: url
+      }));
+  } catch (error) {
+      console.error("Error fetching image URL:", error);
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
+  }
+};
+
   const renderDataRow = (label, value) => (
     <View style={styles.dataRow}>
       <Text style={styles.label}>{label}:</Text>
@@ -93,9 +171,12 @@ export default function App() {
   const renderScene = ({ route }) => {
     const user = userData[route.key];
     const imageUrl = imageUrls[route.key];
+    const currentImageUrl = currentimageUrls[route.key];
+    const leftIrisImageUrl = fetchLeftIrisImageUrls[route.key];
+    const rightIrisImageUrl = fetchRightIrisImageUrls[route.key];
     
     return (
-      <View style={styles.scene}>
+      <ScrollView style={styles.scene} contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
           {renderDataRow('Name', user?.name)}
           {renderDataRow('Passport Number', user?.passport_no)}
@@ -119,8 +200,62 @@ export default function App() {
               )}
             </View>
           </View>
+          <View style={styles.imageSection}>
+          <Text style={styles.imageTitle}>Current Image</Text>
+            <View style={styles.imageContainer}>
+              {currentImageUrl ? (
+                <Image 
+                  source={{ uri: currentImageUrl }}
+                  style={styles.image}
+                  resizeMode="cover"
+                  onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
+                  // Add loading indicator
+                  onLoadStart={() => console.log('Image loading started')}
+                  onLoadEnd={() => console.log('Image loading finished')}
+                />
+              ) : (
+                <Text style={styles.loadingText}>Loading image...</Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.imageSection}>
+            <Text style={styles.imageTitle}>Left Iris</Text>
+            <View style={styles.imageContainer}>
+              {leftIrisImageUrl ? (
+                <Image 
+                  source={{ uri: leftIrisImageUrl }}
+                  style={styles.image}
+                  resizeMode="cover"
+                  onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
+                  // Add loading indicator
+                  onLoadStart={() => console.log('Image loading started')}
+                  onLoadEnd={() => console.log('Image loading finished')}
+                />
+              ) : (
+                <Text style={styles.loadingText}>Loading image...</Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.imageSection}>
+            <Text style={styles.imageTitle}>Right Iris</Text>
+            <View style={styles.imageContainer}>
+              {rightIrisImageUrl ? (
+                <Image 
+                  source={{ uri: rightIrisImageUrl }}
+                  style={styles.image}
+                  resizeMode="cover"
+                  onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
+                  // Add loading indicator
+                  onLoadStart={() => console.log('Image loading started')}
+                  onLoadEnd={() => console.log('Image loading finished')}
+                />
+              ) : (
+                <Text style={styles.loadingText}>Loading image...</Text>
+              )}
+            </View>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     );
   };
 
