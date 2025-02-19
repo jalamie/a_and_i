@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, SafeAreaView, Image,ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, SafeAreaView, Image, ScrollView, ActivityIndicator } from 'react-native';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot } from 'firebase/firestore';
-import { TabView, SceneMap, TabBar } from 'react-native-tab-view';
+import { TabView, TabBar } from 'react-native-tab-view';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 
-// Firebase configuration remains the same
+// Firebase Configuration
 const firebaseConfig = {
   apiKey: "AIzaSyDc3qxRx6i28a_tY3bMB0tXWK3jM7MUo-g",
   authDomain: "capstone-sal.firebaseapp.com",
@@ -16,7 +16,6 @@ const firebaseConfig = {
   measurementId: "G-YPD0ZE5W55"
 };
 
-
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
@@ -25,141 +24,72 @@ const gateName = 'sal2';
 export default function App() {
   const [index, setIndex] = useState(0);
   const [routes, setRoutes] = useState([]);
-  const [userData, setUserData] = useState({}); // New state to store user data
+  const [userData, setUserData] = useState({});
   const [imageUrls, setImageUrls] = useState({});
-  const [currentimageUrls, setCurrentImageUrls] = useState({});
-  const [fetchLeftIrisImageUrls, setLeftIrisImageUrls] = useState({});
-  const [fetchRightIrisImageUrls, setRightIrisImageUrls] = useState({});
+  const [currentImageUrls, setCurrentImageUrls] = useState({});
+  const [leftIrisImageUrls, setLeftIrisImageUrls] = useState({});
+  const [rightIrisImageUrls, setRightIrisImageUrls] = useState({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!gateName) return;
-  
+
     const usersCollectionRef = collection(db, `gates/${gateName}/users`);
-  
-    const unsubscribe = onSnapshot(usersCollectionRef, (snapshot) => {
+
+    const unsubscribe = onSnapshot(usersCollectionRef, async (snapshot) => {
       if (snapshot.empty) {
-        console.log('No documents found in Firestore!');
+        console.log('No users found!');
         setRoutes([]);
+        setLoading(false);
         return;
       }
-  
+
       const data = {};
+      const imagePromises = [];
+
       const newRoutes = snapshot.docs.map((doc, i) => {
         const docData = doc.data();
-        data[doc.id] = docData; // Store the full document data
-        // If document has an image path, fetch the URL
-        console.log('Passport image path:', docData.passport_image);
+        data[doc.id] = docData;
+
         if (docData.passport_image) {
-          console.log('passport_image: ',docData.passport_image)
-          fetchPassportImageUrl(doc.id, docData.passport_image);
+          imagePromises.push(fetchImageUrl(doc.id, docData.passport_image, setImageUrls));
         }
         if (docData.current_image) {
-          console.log('passport_image: ',docData.current_image)
-          fetchCurrentImageUrl(doc.id, docData.current_image);
+          imagePromises.push(fetchImageUrl(doc.id, docData.current_image, setCurrentImageUrls));
         }
         if (docData.left_iris) {
-          console.log('passport_image: ',docData.left_iris)
-          fetchLeftIrisImageUrl(doc.id, docData.left_iris);
+          imagePromises.push(fetchImageUrl(doc.id, docData.left_iris, setLeftIrisImageUrls));
         }
         if (docData.right_iris) {
-          console.log('passport_image: ',docData.right_iris)
-          fetchRightIrisImageUrl(doc.id, docData.right_iris);
+          imagePromises.push(fetchImageUrl(doc.id, docData.right_iris, setRightIrisImageUrls));
         }
+
         return {
           key: doc.id,
           title: `User ${i + 1}`,
         };
       });
-  
-      setUserData(data); // Store the user data
+
+      setUserData(data);
       setRoutes(newRoutes);
+
+      // Wait for all images to finish loading before updating UI
+      await Promise.all(imagePromises);
+      setLoading(false);
     });
-  
+
     return () => unsubscribe();
   }, [gateName]);
 
-  const fetchPassportImageUrl = async (userId, imagePath) => {
+  const fetchImageUrl = async (userId, imagePath, setImageState) => {
     try {
-        console.log('Starting to fetch image for user:', userId);
-        console.log('Image path:', imagePath);
-        
-        const imageRef = ref(storage, imagePath);
-        const url = await getDownloadURL(imageRef);
-        
-        console.log('Successfully got passport URL:', url);
-        
-        setImageUrls(prev => ({
-            ...prev,
-            [userId]: url
-        }));
+      const imageRef = ref(storage, imagePath);
+      const url = await getDownloadURL(imageRef);
+      setImageState(prev => ({ ...prev, [userId]: url }));
     } catch (error) {
-        console.error("Error fetching image URL:", error);
-        console.error("Error code:", error.code);
-        console.error("Error message:", error.message);
+      console.error(`Error fetching image for ${userId}:`, error);
     }
-};
-
-const fetchCurrentImageUrl = async (userId, imagePath) => {
-  try {
-      console.log('Starting to fetch image for user:', userId);
-      console.log('Image path:', imagePath);
-      
-      const imageRef = ref(storage, imagePath);
-      const url = await getDownloadURL(imageRef);
-      
-      console.log('Successfully got passport URL:', url);
-      
-      setCurrentImageUrls(prev => ({
-          ...prev,
-          [userId]: url
-      }));
-  } catch (error) {
-      console.error("Error fetching image URL:", error);
-      console.error("Error code:", error.code);
-      console.error("Error message:", error.message);
-  }
-};
-
-const fetchLeftIrisImageUrl = async (userId, imagePath) => {
-  try {
-      console.log('Starting to fetch image for user:', userId);
-      console.log('Image path:', imagePath);
-      
-      const imageRef = ref(storage, imagePath);
-      const url = await getDownloadURL(imageRef);
-      
-      console.log('Successfully got left iris URL:', url);
-      
-      setLeftIrisImageUrls(prev => ({
-          ...prev,
-          [userId]: url
-      }));
-  } catch (error) {
-      console.error("Error fetching image URL:", error);
-      console.error("Error code:", error.code);
-      console.error("Error message:", error.message);
-  }
-};
-const fetchRightIrisImageUrl = async (userId, imagePath) => {
-  try {
-      console.log('Starting to fetch image for user:', userId);
-      console.log('Image path:', imagePath);
-      
-      const imageRef = ref(storage, imagePath);
-      const url = await getDownloadURL(imageRef);
-      
-      console.log('Successfully got right iris URL:', url);
-      
-      setRightIrisImageUrls(prev => ({
-          ...prev,
-          [userId]: url
-      }));
-  } catch (error) {
-      console.error("Error fetching image URL:", error);
-      console.error("Error code:", error.code);
-      console.error("Error message:", error.message);
-  }
-};
+  };
 
   const renderDataRow = (label, value) => (
     <View style={styles.dataRow}>
@@ -171,102 +101,57 @@ const fetchRightIrisImageUrl = async (userId, imagePath) => {
   const renderScene = ({ route }) => {
     const user = userData[route.key];
     const imageUrl = imageUrls[route.key];
-    const currentImageUrl = currentimageUrls[route.key];
-    const leftIrisImageUrl = fetchLeftIrisImageUrls[route.key];
-    const rightIrisImageUrl = fetchRightIrisImageUrls[route.key];
-    
+    const currentImageUrl = currentImageUrls[route.key];
+    const leftIrisImageUrl = leftIrisImageUrls[route.key];
+    const rightIrisImageUrl = rightIrisImageUrls[route.key];
+
     return (
       <ScrollView style={styles.scene} contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
           {renderDataRow('Name', user?.name)}
           {renderDataRow('Passport Number', user?.passport_no)}
-          
-          {/* Image Section with loading state */}
-          <View style={styles.imageSection}>
-            <Text style={styles.imageTitle}>Profile Image</Text>
-            <View style={styles.imageContainer}>
-              {imageUrl ? (
-                <Image 
-                  source={{ uri: imageUrl }}
-                  style={styles.image}
-                  resizeMode="cover"
-                  onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
-                  // Add loading indicator
-                  onLoadStart={() => console.log('Image loading started')}
-                  onLoadEnd={() => console.log('Image loading finished')}
-                />
-              ) : (
-                <Text style={styles.loadingText}>Loading image...</Text>
-              )}
-            </View>
-          </View>
-          <View style={styles.imageSection}>
-          <Text style={styles.imageTitle}>Current Image</Text>
-            <View style={styles.imageContainer}>
-              {currentImageUrl ? (
-                <Image 
-                  source={{ uri: currentImageUrl }}
-                  style={styles.image}
-                  resizeMode="cover"
-                  onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
-                  // Add loading indicator
-                  onLoadStart={() => console.log('Image loading started')}
-                  onLoadEnd={() => console.log('Image loading finished')}
-                />
-              ) : (
-                <Text style={styles.loadingText}>Loading image...</Text>
-              )}
-            </View>
-          </View>
-          <View style={styles.imageSection}>
-            <Text style={styles.imageTitle}>Left Iris</Text>
-            <View style={styles.imageContainer}>
-              {leftIrisImageUrl ? (
-                <Image 
-                  source={{ uri: leftIrisImageUrl }}
-                  style={styles.image}
-                  resizeMode="cover"
-                  onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
-                  // Add loading indicator
-                  onLoadStart={() => console.log('Image loading started')}
-                  onLoadEnd={() => console.log('Image loading finished')}
-                />
-              ) : (
-                <Text style={styles.loadingText}>Loading image...</Text>
-              )}
-            </View>
-          </View>
-          <View style={styles.imageSection}>
-            <Text style={styles.imageTitle}>Right Iris</Text>
-            <View style={styles.imageContainer}>
-              {rightIrisImageUrl ? (
-                <Image 
-                  source={{ uri: rightIrisImageUrl }}
-                  style={styles.image}
-                  resizeMode="cover"
-                  onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
-                  // Add loading indicator
-                  onLoadStart={() => console.log('Image loading started')}
-                  onLoadEnd={() => console.log('Image loading finished')}
-                />
-              ) : (
-                <Text style={styles.loadingText}>Loading image...</Text>
-              )}
-            </View>
-          </View>
+
+          {/* Profile Image */}
+          {renderImageSection('Profile Image', imageUrl)}
+
+          {/* Current Image */}
+          {renderImageSection('Current Image', currentImageUrl)}
+
+          {/* Left Iris Image */}
+          {renderImageSection('Left Iris', leftIrisImageUrl)}
+
+          {/* Right Iris Image */}
+          {renderImageSection('Right Iris', rightIrisImageUrl)}
         </View>
       </ScrollView>
     );
   };
 
-  const renderTabBar = props => (
-    <TabBar
-      {...props}
-      style={styles.tabBar}
-      indicatorStyle={styles.indicator}
-      labelStyle={styles.label}
-    />
+  const renderImageSection = (title, imageUrl) => (
+    <View style={styles.imageSection}>
+      <Text style={styles.imageTitle}>{title}</Text>
+      <View style={styles.imageContainer}>
+        {imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
+        ) : (
+          <ActivityIndicator size="large" color="#6200ee" />
+        )}
+      </View>
+    </View>
   );
+
+  const renderTabBar = props => (
+    <TabBar {...props} style={styles.tabBar} indicatorStyle={styles.indicator} labelStyle={styles.tabLabel} />
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6200ee" />
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -286,20 +171,25 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: 20,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   scene: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  scrollContent: {
     padding: 16,
+    paddingBottom: 50,
   },
   card: {
     backgroundColor: 'white',
     borderRadius: 8,
     padding: 16,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
@@ -335,23 +225,24 @@ const styles = StyleSheet.create({
   },
   imageSection: {
     marginTop: 16,
-    width: '100%',
-},
-imageTitle: {
+  },
+  imageTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 8,
     color: '#333',
-},
-imageContainer: {
+  },
+  imageContainer: {
     width: '100%',
-    aspectRatio: 4/5, // This maintains a consistent aspect ratio
+    aspectRatio: 4 / 5,
     backgroundColor: '#f5f5f5',
     borderRadius: 8,
     overflow: 'hidden',
-},
-image: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  image: {
     width: '100%',
     height: '100%',
-},
+  },
 });
