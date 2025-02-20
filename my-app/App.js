@@ -30,6 +30,7 @@ export default function App() {
   const [leftIrisImageUrls, setLeftIrisImageUrls] = useState({});
   const [rightIrisImageUrls, setRightIrisImageUrls] = useState({});
   const [loading, setLoading] = useState(true);
+  const [imageLoading, setImageLoading] = useState({}); // Track image loading per user
 
   useEffect(() => {
     if (!gateName) return;
@@ -37,6 +38,8 @@ export default function App() {
     const usersCollectionRef = collection(db, `gates/${gateName}/users`);
 
     const unsubscribe = onSnapshot(usersCollectionRef, async (snapshot) => {
+      setLoading(true); // Start loading state
+
       if (snapshot.empty) {
         console.log('No users found!');
         setRoutes([]);
@@ -73,9 +76,9 @@ export default function App() {
       setUserData(data);
       setRoutes(newRoutes);
 
-      // Wait for all images to finish loading before updating UI
       await Promise.all(imagePromises);
-      setLoading(false);
+      setLoading(false); // Ensure loading stops **after images load**
+      console.log("All images loaded, rendering UI"); // Debug log
     });
 
     return () => unsubscribe();
@@ -83,11 +86,17 @@ export default function App() {
 
   const fetchImageUrl = async (userId, imagePath, setImageState) => {
     try {
+      setImageLoading(prev => ({ ...prev, [userId]: true })); // Mark image as loading
+
       const imageRef = ref(storage, imagePath);
       const url = await getDownloadURL(imageRef);
+
       setImageState(prev => ({ ...prev, [userId]: url }));
+
+      setImageLoading(prev => ({ ...prev, [userId]: false })); // Mark image as loaded
     } catch (error) {
       console.error(`Error fetching image for ${userId}:`, error);
+      setImageLoading(prev => ({ ...prev, [userId]: false })); // Mark error as loaded
     }
   };
 
@@ -104,6 +113,7 @@ export default function App() {
     const currentImageUrl = currentImageUrls[route.key];
     const leftIrisImageUrl = leftIrisImageUrls[route.key];
     const rightIrisImageUrl = rightIrisImageUrls[route.key];
+    const isImageLoading = imageLoading[route.key];
 
     return (
       <ScrollView style={styles.scene} contentContainerStyle={styles.scrollContent}>
@@ -112,29 +122,31 @@ export default function App() {
           {renderDataRow('Passport Number', user?.passport_no)}
 
           {/* Profile Image */}
-          {renderImageSection('Profile Image', imageUrl)}
+          {renderImageSection('Profile Image', imageUrl, isImageLoading)}
 
           {/* Current Image */}
-          {renderImageSection('Current Image', currentImageUrl)}
+          {renderImageSection('Current Image', currentImageUrl, isImageLoading)}
 
           {/* Left Iris Image */}
-          {renderImageSection('Left Iris', leftIrisImageUrl)}
+          {renderImageSection('Left Iris', leftIrisImageUrl, isImageLoading)}
 
           {/* Right Iris Image */}
-          {renderImageSection('Right Iris', rightIrisImageUrl)}
+          {renderImageSection('Right Iris', rightIrisImageUrl, isImageLoading)}
         </View>
       </ScrollView>
     );
   };
 
-  const renderImageSection = (title, imageUrl) => (
+  const renderImageSection = (title, imageUrl, isLoading) => (
     <View style={styles.imageSection}>
       <Text style={styles.imageTitle}>{title}</Text>
       <View style={styles.imageContainer}>
-        {imageUrl ? (
+        {isLoading ? (
+          <ActivityIndicator size="large" color="#6200ee" />
+        ) : imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
         ) : (
-          <ActivityIndicator size="large" color="#6200ee" />
+          <Text style={styles.noImageText}>No Image Available</Text>
         )}
       </View>
     </View>
@@ -153,6 +165,14 @@ export default function App() {
     );
   }
 
+  if (routes.length === 0) {
+    return (
+      <View style={styles.noUserContainer}>
+        <Text style={styles.noUserText}>No users found</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <TabView
@@ -166,30 +186,26 @@ export default function App() {
   );
 }
 
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     marginTop: 20,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   scene: {
     flex: 1,
     backgroundColor: '#f8f9fa',
-  },
-  scrollContent: {
     padding: 16,
-    paddingBottom: 50,
   },
   card: {
     backgroundColor: 'white',
     borderRadius: 8,
     padding: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
@@ -225,24 +241,23 @@ const styles = StyleSheet.create({
   },
   imageSection: {
     marginTop: 16,
-  },
-  imageTitle: {
+    width: '100%',
+},
+imageTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 8,
     color: '#333',
-  },
-  imageContainer: {
+},
+imageContainer: {
     width: '100%',
-    aspectRatio: 4 / 5,
+    aspectRatio: 4/5, // This maintains a consistent aspect ratio
     backgroundColor: '#f5f5f5',
     borderRadius: 8,
     overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  image: {
+},
+image: {
     width: '100%',
     height: '100%',
-  },
+},
 });
