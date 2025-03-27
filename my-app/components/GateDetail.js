@@ -2,11 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, Dimensions, SafeAreaView, Image, ScrollView, 
-  ActivityIndicator, TouchableOpacity 
+  ActivityIndicator, TouchableOpacity, Alert 
 } from 'react-native';
 import { getFirestore, collection, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { TabView, TabBar } from 'react-native-tab-view';
+import Toast from 'react-native-toast-message';
+
 
 const GateDetail = ({ route, navigation }) => {
   const { gateId } = route.params;
@@ -21,6 +23,7 @@ const GateDetail = ({ route, navigation }) => {
   const [imageLoading, setImageLoading] = useState({});
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [gateData, setGateData] = useState(null);
+  const [lastAlert, setLastAlert] = useState(null);
 
   const db = getFirestore();
   const storage = getStorage();
@@ -80,7 +83,6 @@ const GateDetail = ({ route, navigation }) => {
         setLoading(false);
         return;
       }
-
       const data = {};
       const imagePromises = [];
 
@@ -113,10 +115,22 @@ const GateDetail = ({ route, navigation }) => {
     // Listen for realtime updates to the gate document
     const gateUnsubscribe = onSnapshot(doc(db, 'gates', gateId), (docSnapshot) => {
       if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
         setGateData({
           id: docSnapshot.id,
           ...docSnapshot.data()
         });
+        if (data.alerts && data.alerts.trim() !== '' && data.alerts !== lastAlert) {
+          Toast.show({
+            type: 'error', // or 'success', 'info'
+            text1: '🚨 Gate Alert',
+            text2: data.alerts,
+            position: 'top', // 'top' | 'bottom'
+        visibilityTime: 10000, // auto dismiss after 10     S                                ch seconds
+          });
+          console.log('Gate Alert:', data.alerts);
+          setLastAlert(data.alerts); // prevent repeat
+        }        
       }
     });
 
@@ -157,10 +171,43 @@ const GateDetail = ({ route, navigation }) => {
     }
   };
 
+  const confirmFrontFlap = (action) => {
+    Alert.alert(
+      `${action ? 'Open' : 'Close'} Front Flap`,
+      `Are you sure you want to ${action ? 'open' : 'close'} the front flap?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Yes', onPress: () => updatefrontflap(action) },
+      ],
+      { cancelable: true }
+    );
+  };
+  
+  const confirmBackFlap = (action) => {
+    Alert.alert(
+      `${action ? 'Open' : 'Close'} Back Flap`,
+      `Are you sure you want to ${action ? 'open' : 'close'} the back flap?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Yes', onPress: () => updatebackflap(action) },
+      ],
+      { cancelable: true }
+    );
+  };
+
   const updatefrontflap = async (action) => {
     try {
       const userRef = doc(db, `gates/${gateId}`);
-  
+      if(action){
+        await updateDoc(userRef, {
+          status: 'entering', 
+        });
+      }
+      else{
+        await updateDoc(userRef, {
+          status: '', 
+        });
+      }
       await updateDoc(userRef, {
         front_flap: action, 
       });
@@ -174,7 +221,15 @@ const GateDetail = ({ route, navigation }) => {
   const updatebackflap = async (action) => {
     try {
       const userRef = doc(db, `gates/${gateId}`);
-  
+      if(action){
+        await updateDoc(userRef, {
+          status: '', 
+          to_tilt: true, 
+          tilt_mode: "low", 
+          height_sensor: 0,
+          'timestamp': deleteField() 
+        });
+      }
       await updateDoc(userRef, {
         back_flap: action, 
       });
@@ -373,7 +428,7 @@ const GateDetail = ({ route, navigation }) => {
                   <TouchableOpacity 
                     style={[styles.rowButton, styles.buttonLeft]} 
                     onPress={() => {
-                      updatefrontflap(true);
+                      confirmFrontFlap(true);
                       console.log('Open Front Flapper');
                     }}
                   >
@@ -383,7 +438,7 @@ const GateDetail = ({ route, navigation }) => {
                   <TouchableOpacity 
                     style={[styles.rowButton, styles.buttonRight]} 
                     onPress={() => {
-                      updatefrontflap(false);
+                      confirmFrontFlap(false);
                       console.log('Close Front Flapper');
                     }}
                   >
@@ -398,7 +453,7 @@ const GateDetail = ({ route, navigation }) => {
                   <TouchableOpacity 
                     style={[styles.rowButton, styles.buttonLeft]} 
                     onPress={() => {
-                      updatebackflap(true);
+                      confirmBackFlap(true);
                       console.log('Open Back Flapper');
                     }}
                   >
@@ -407,7 +462,7 @@ const GateDetail = ({ route, navigation }) => {
                   <TouchableOpacity 
                     style={[styles.rowButton, styles.buttonRight]} 
                     onPress={() => {
-                      updatebackflap(false);
+                      confirmBackFlap(false);
                       console.log('Close Back Flapper');
                     }}
                   >
