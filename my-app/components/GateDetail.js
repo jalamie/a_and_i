@@ -1,5 +1,5 @@
 // components/GateDetail.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, Dimensions, SafeAreaView, Image, ScrollView, 
   ActivityIndicator, TouchableOpacity, Alert 
@@ -23,7 +23,8 @@ const GateDetail = ({ route, navigation }) => {
   const [imageLoading, setImageLoading] = useState({});
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [gateData, setGateData] = useState(null);
-  const [lastAlert, setLastAlert] = useState(null);
+  const lastAlertRef = useRef(null);
+
 
   const db = getFirestore();
   const storage = getStorage();
@@ -120,7 +121,8 @@ const GateDetail = ({ route, navigation }) => {
           id: docSnapshot.id,
           ...docSnapshot.data()
         });
-        if (data.alerts && data.alerts.trim() !== '' && data.alerts !== lastAlert) {
+        if (data.alerts && data.alerts.trim() !== '' && data.alerts !== lastAlertRef.current) {
+          console.log(data.alerts, lastAlertRef.current);
           Toast.show({
             type: 'error', // or 'success', 'info'
             text1: '🚨 Gate Alert',
@@ -129,7 +131,7 @@ const GateDetail = ({ route, navigation }) => {
         visibilityTime: 10000, // auto dismiss after 10     S                                ch seconds
           });
           console.log('Gate Alert:', data.alerts);
-          setLastAlert(data.alerts); // prevent repeat
+          lastAlertRef.current = data.alerts; // prevent repeat
         }        
       }
     });
@@ -205,8 +207,8 @@ const GateDetail = ({ route, navigation }) => {
       }
       else{
         await updateDoc(userRef, {
-          status: '', 
-        });
+          status: 'entered', 
+        }); 
       }
       await updateDoc(userRef, {
         front_flap: action, 
@@ -286,6 +288,7 @@ const GateDetail = ({ route, navigation }) => {
               <View style={styles.userInfoContainer}>
                 {renderDataRow('Name', user?.name)}
                 {renderDataRow('Passport Number', user?.passport_no)}
+                {renderdobDataRow('Date of Birth', user?.dob, '[Age: ', user?.age, ']')}
                 {renderDataRow('Approved', user?.scan_status)}
               </View>
             </View>
@@ -338,6 +341,15 @@ const GateDetail = ({ route, navigation }) => {
     <View style={styles.dataRow}>
       <Text style={styles.label}>{label}</Text>
       <Text style={styles.value}>{value || 'N/A'}</Text>
+    </View>
+  );
+  const renderdobDataRow = (label, value, separator, additionalValue, suffix) => (
+    <View style={styles.dataRow}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>
+        {value || 'N/A'}
+        {value && additionalValue ? ` ${separator} ${additionalValue} ${suffix}` : ''}
+      </Text>
     </View>
   );
   
