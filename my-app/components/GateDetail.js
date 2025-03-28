@@ -4,11 +4,10 @@ import {
   View, Text, StyleSheet, Dimensions, SafeAreaView, Image, ScrollView, 
   ActivityIndicator, TouchableOpacity, Alert 
 } from 'react-native';
-import { getFirestore, collection, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, updateDoc, getDoc, deleteField } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { TabView, TabBar } from 'react-native-tab-view';
 import Toast from 'react-native-toast-message';
-
 
 const GateDetail = ({ route, navigation }) => {
   const { gateId } = route.params;
@@ -24,11 +23,26 @@ const GateDetail = ({ route, navigation }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [gateData, setGateData] = useState(null);
   const lastAlertRef = useRef(null);
-
+  const [usersToOverrule, setUsersToOverrule] = useState([]);
+  const exitingCheckedRef = useRef(false);
 
   const db = getFirestore();
   const storage = getStorage();
-
+  const checkAllUsersProcessed = () => {
+    if (Object.keys(userData).length == 0) return false;
+    console.log("Checking scan status for all users:");
+    const userEntries = Object.entries(userData);
+    for (let i = 0; i < userEntries.length; i++) {
+      const [userId, user] = userEntries[i];
+      console.log(`User ID: ${userId} | Scan Status: ${user.scan_status || 'Empty/Undefined'}`);
+      
+      if (!user.scan_status || user.scan_status === '') {
+        console.log(`User ${userId} is not processed yet - returning false immediately`);
+        return false; // Return immediately upon finding an unprocessed user
+      }
+    }
+    return true;
+  };
   useEffect(() => {
     if (!gateId) {
       console.log("No gate ID provided");
@@ -36,7 +50,7 @@ const GateDetail = ({ route, navigation }) => {
     }
 
     console.log(`Loading details for gate: ${gateId}`);
-    
+
     // Get the gate data first
     const fetchGateData = async () => {
       try {
@@ -103,8 +117,9 @@ const GateDetail = ({ route, navigation }) => {
         if (docData.right_iris) {
           imagePromises.push(fetchImageUrl(doc.id, docData.right_iris, setRightIrisImageUrls));
         }
+        
 
-        return { key: doc.id, title: `User ${i + 1}` };
+        return { key: doc.id, title: doc.id };
       });
 
       setUserData(data);
@@ -131,8 +146,22 @@ const GateDetail = ({ route, navigation }) => {
         visibilityTime: 10000, // auto dismiss after 10     S                                ch seconds
           });
           console.log('Gate Alert:', data.alerts);
+          if (data.alerts.includes('[error] manual authentication for')) {
+            try {
+              const userListMatch = data.alerts.match(/\[(.*?)\]/g);
+              if (userListMatch && userListMatch.length > 1) {
+                const userListStr = userListMatch[1].replace('[', '').replace(']', '');
+                const usersList = userListStr.split(',').map(user => user.trim());
+                setUsersToOverrule(usersList);
+                console.log('Users requiring manual authentication:', usersList);
+                console.log('Users requiring manual authentication:', usersList);
+              }
+            } catch (error) {
+              console.error('Error parsing alert message:', error);
+            }
+          }
           lastAlertRef.current = data.alerts; // prevent repeat
-        }        
+        }   
       }
     });
 
@@ -157,20 +186,6 @@ const GateDetail = ({ route, navigation }) => {
 
   const toggleDropdown = () => {
     setDropdownOpen(!dropdownOpen);
-  };
-
-  const updateTilt = async (userId, direction) => {
-    try {
-      const userRef = doc(db, `gates/${gateId}/users`, userId);
-  
-      await updateDoc(userRef, {
-        tilt: direction,
-      });
-  
-      console.log(`Tilt ${direction} command sent for user: ${userId}`);
-    } catch (error) {
-      console.error('Error updating tilt direction:', error);
-    }
   };
 
   const confirmFrontFlap = (action) => {
@@ -229,7 +244,8 @@ const GateDetail = ({ route, navigation }) => {
           to_tilt: true, 
           tilt_mode: "low", 
           height_sensor: 0,
-          'timestamp': deleteField() 
+          status: 'exiting',
+          timestamp: deleteField(), 
         });
       }
       await updateDoc(userRef, {
@@ -254,6 +270,127 @@ const GateDetail = ({ route, navigation }) => {
       
     }
   }
+  const handleExiting = async () => {
+    try {
+      console.log("All users processed, initiating exit sequence");
+      
+      // Now db and gateId are in scope
+      const gateRef = doc(db, `gates/${gateId}`);
+      console.log("Creating reference to path:", `gates/${gateId}`);
+      await updateDoc(gateRef, {
+        status: 'exiting',
+        back_flap: true,
+        timestamp: deleteField(),
+      });
+      console.log("Firestore update successful!");
+      // Show success toast
+      Toast.show({
+        type: 'info',
+        text1: 'Exit Sequence Initiated',
+        text2: 'All users processed, gate will begin exit sequence',
+        position: 'top',
+        visibilityTime: 3000,
+      });
+      
+      console.log("Exit sequence initiated for gate:", gateId);
+      
+      // Mark as checked to prevent multiple calls
+      exitingCheckedRef.current = true;
+    } catch (error) {
+      console.error('Error initiating exit sequence:', error);
+      console.error('Error type:', error.constructor.name);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      
+      // Reset the flag if there was an error
+      exitingCheckedRef.current = false;
+      Toast.show({
+        type: 'error',
+        text1: 'Exit Sequence Failed',
+        text2: 'Could not initiate exit sequence',
+        position: 'top',
+        visibilityTime: 3000,
+      });
+    }
+  };
+  const overruleUser = async (userId) => {
+    try {
+      const userRef = doc(db, `gates/${gateId}/users`, userId);
+      
+      // Confirm before overruling
+      Alert.alert(
+        "Manual Authentication Override",
+        `Are you sure you want to manually authenticate user: ${userId}?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { 
+            text: "Confirm", 
+            onPress: async () => {
+              await updateDoc(userRef, {
+                scan_status: "Manually Approved",
+                override: true,
+                override_timestamp: new Date().toISOString()
+              });
+              
+              // Remove this user from the overrule list
+              setUsersToOverrule(prev => prev.filter(id => id !== userId));
+              
+              // Show success toast
+              Toast.show({
+                type: 'success',
+                text1: 'Override Successful',
+                text2: `User ${userId} has been manually authenticated`,
+                position: 'top',
+                visibilityTime: 3000,
+              });
+              
+              console.log(`User ${userId} manually authenticated`);
+            }
+            
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error overriding user authentication:', error);
+      
+      Toast.show({
+        type: 'error',
+        text1: 'Override Failed',
+        text2: `Could not authenticate user ${userId}`,
+        position: 'top',
+        visibilityTime: 3000,
+      });
+    }
+    
+  };
+  useEffect(() => {
+    console.log("🔍 useEffect for userData triggered");
+    
+    // Skip on first render or when empty
+    if (Object.keys(userData).length === 0) {
+      console.log("⚠️ userData is empty, skipping check");
+      return;
+    }
+    
+    // Don't run check if we've already initiated exiting
+    if (exitingCheckedRef.current) {
+      console.log("⚠️ Exit already initiated (exitingCheckedRef.current = true), skipping check");
+      return;
+    }
+    
+    console.log("📊 userData changed, checking if all users are processed");
+    console.log("🧾 Current userData:", JSON.stringify(userData));
+    
+    const allProcessed = checkAllUsersProcessed();
+    console.log("✅ All users processed check result:", allProcessed);
+    
+    if (allProcessed) {
+      console.log("🚪 All users processed, calling handleExiting()");
+      handleExiting();
+    } else {
+      console.log("⏳ Not all users processed yet, waiting for updates");
+    }
+  }, [userData]);
 
   const renderScene = ({ route }) => {
     const user = userData[route.key];
@@ -265,6 +402,7 @@ const GateDetail = ({ route, navigation }) => {
     const leftIrisImageUrl = leftIrisImageUrls[route.key] || null;
     const rightIrisImageUrl = rightIrisImageUrls[route.key] || null;
     const isImageLoading = imageLoading[route.key];
+    const showOverruleButton = usersToOverrule.includes(route.key);
 
     return (
       <ScrollView style={styles.scene} contentContainerStyle={styles.scrollContent}>
@@ -290,6 +428,14 @@ const GateDetail = ({ route, navigation }) => {
                 {renderDataRow('Passport Number', user?.passport_no)}
                 {renderdobDataRow('Date of Birth', user?.dob, '[Age: ', user?.age, ']')}
                 {renderDataRow('Approved', user?.scan_status)}
+                {showOverruleButton && (
+                  <TouchableOpacity 
+                    style={styles.overruleButton}
+                    onPress={() => overruleUser(route.key)}
+                  >
+                    <Text style={styles.overruleButtonText}>Overrule</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
             
@@ -769,6 +915,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5, // Adds spacing inside the text area
     paddingVertical: 3, // Prevents text from being too close to edges
     textAlign: 'left', // Ensures text is properly aligned
+},
+overruleButton: {
+  backgroundColor: '#FF5722',
+  padding: 8,
+  borderRadius: 4,
+  marginTop: 10,
+  alignItems: 'center',
+},
+overruleButtonText: {
+  color: 'white',
+  fontWeight: 'bold',
+  fontSize: 14,
 },
 
 });
