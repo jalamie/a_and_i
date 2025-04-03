@@ -104,11 +104,18 @@ const GateDetail = ({ route, navigation }) => {
       const newRoutes = snapshot.docs.map((doc, i) => {
         const docData = doc.data();
         data[doc.id] = docData;
+        console.log('current_image:',docData.current_image)
+        console.log('left_iris:',docData.left_iris)
+        setImageUrls({});
+        setCurrentImageUrls({});
+        setLeftIrisImageUrls({});
+        setRightIrisImageUrls({});
 
         if (docData.passport_image) {
           imagePromises.push(fetchImageUrl(doc.id, docData.passport_image, setImageUrls));
         }
         if (docData.current_image) {
+          console.log('current_image exist')
           imagePromises.push(fetchImageUrl(doc.id, docData.current_image, setCurrentImageUrls));
         }
         if (docData.left_iris) {
@@ -215,19 +222,22 @@ const GateDetail = ({ route, navigation }) => {
   const updatefrontflap = async (action) => {
     try {
       const userRef = doc(db, `gates/${gateId}`);
+      // await updateDoc(userRef, {
+      //   front_flap: action, 
+      // });
       if(action){
         await updateDoc(userRef, {
+          front_flap: action, 
           status: 'entering', 
         });
       }
       else{
         await updateDoc(userRef, {
+          front_flap: action, 
           status: 'entered', 
         }); 
       }
-      await updateDoc(userRef, {
-        front_flap: action, 
-      });
+      
   
       console.log(`${action ? 'Open' : 'Close'} front flap`);
     } catch (error) {
@@ -238,19 +248,17 @@ const GateDetail = ({ route, navigation }) => {
   const updatebackflap = async (action) => {
     try {
       const userRef = doc(db, `gates/${gateId}`);
-      if(action){
+      
+      if(!action & gateData.status === 'exiting'){
         await updateDoc(userRef, {
-          status: '', 
-          to_tilt: true, 
-          tilt_mode: "low", 
-          height_sensor: 0,
-          status: 'exiting',
-          timestamp: deleteField(), 
+          status: 'exited',
         });
       }
-      await updateDoc(userRef, {
-        back_flap: action, 
-      });
+      else{
+        await updateDoc(userRef, {
+          back_flap: action,
+        });
+      }
       
       console.log(`${action ? 'Open' : 'Close'} back flap`);
     } catch (error) {
@@ -331,6 +339,8 @@ const GateDetail = ({ route, navigation }) => {
                 override: true,
                 override_timestamp: new Date().toISOString()
               });
+
+              console.log(`User ${userId} manually authenticated`);
               
               // Remove this user from the overrule list
               setUsersToOverrule(prev => prev.filter(id => id !== userId));
@@ -458,7 +468,14 @@ const GateDetail = ({ route, navigation }) => {
                 {isImageLoading ? (
                   <ActivityIndicator size="small" color="#6200ee" />
                 ) : leftIrisImageUrl ? (
-                  <Image source={{ uri: leftIrisImageUrl }} style={styles.irisImage} resizeMode="cover" />
+                  <Image 
+                    source={{ uri: leftIrisImageUrl }} 
+                    style={[
+                      styles.irisImage, 
+                      { transform: [{ scaleX: -1 }] }  // This flips the image horizontally
+                    ]} 
+                    resizeMode="cover" 
+                  />
                 ) : (
                   <Text style={styles.noImageText}>No Image</Text>
                 )}
@@ -470,7 +487,14 @@ const GateDetail = ({ route, navigation }) => {
                 {isImageLoading ? (
                   <ActivityIndicator size="small" color="#6200ee" />
                 ) : rightIrisImageUrl ? (
-                  <Image source={{ uri: rightIrisImageUrl }} style={styles.irisImage} resizeMode="cover" />
+                  <Image 
+                    source={{ uri: rightIrisImageUrl }} 
+                    style={[
+                      styles.irisImage, 
+                      { transform: [{ scaleX: -1 }] }  // This flips the image horizontally
+                    ]} 
+                    resizeMode="cover" 
+                  />
                 ) : (
                   <Text style={styles.noImageText}>No Image</Text>
                 )}

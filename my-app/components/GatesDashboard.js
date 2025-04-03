@@ -46,7 +46,8 @@ const GatesDashboard = ({ navigation }) => {
             id: gateId,
             ...gateData,
             maxHeight: gateData.height_sensor || 0,
-            timestamp: gateData.timestamp ? gateData.timestamp.toDate() : null
+            timestamp: gateData.timestamp ? gateData.timestamp.toDate() : null,
+            alerts: gateData.alerts || ""
           });
         }
       });
@@ -132,7 +133,8 @@ const GatesDashboard = ({ navigation }) => {
   };
 
   // Determine gate color based on usage time
-  const getGateColor = (timestamp) => {
+  const getGateColor = (timestamp, alerts) => {
+    if (alerts && alerts.length > 0) return 'red';
     if (!timestamp) return 'white';
     
     // Use the currentTime state value instead of creating a new Date
@@ -168,7 +170,7 @@ const GatesDashboard = ({ navigation }) => {
                 key={gate.id}
                 style={[
                   styles.gateCard,
-                  { backgroundColor: getGateColor(gate.timestamp) }
+                  { backgroundColor: getGateColor(gate.timestamp, gate.alerts) }
                 ]}
                 onPress={() => handleGatePress(gate)}
               >
@@ -181,6 +183,11 @@ const GatesDashboard = ({ navigation }) => {
                     <Text style={styles.gateInfo}>
                       Max height: {gate.maxHeight}
                     </Text>
+                    {gate.alerts && gate.alerts !== "" && (
+                      <Text style={styles.gateInfo}>
+                        Alerts: {gate.alerts}
+                      </Text>
+                    )}
                   </>
                 ) : (
                   <Text style={styles.gateInfo}>Not in use</Text>
